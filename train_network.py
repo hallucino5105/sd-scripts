@@ -44,6 +44,7 @@ from library.custom_train_functions import (
     scale_v_prediction_loss_like_noise_prediction,
     add_v_prediction_like_loss,
 )
+from pprint import pprint
 
 
 class NetworkTrainer:
@@ -53,7 +54,14 @@ class NetworkTrainer:
 
     # TODO 他のスクリプトと共通化する
     def generate_step_logs(
-        self, args: argparse.Namespace, current_loss, avr_loss, lr_scheduler, keys_scaled=None, mean_norm=None, maximum_norm=None
+        self,
+        args: argparse.Namespace,
+        current_loss,
+        avr_loss,
+        lr_scheduler,
+        keys_scaled=None,
+        mean_norm=None,
+        maximum_norm=None,
     ):
         logs = {"loss/current": current_loss, "loss/average": avr_loss}
 
@@ -74,7 +82,8 @@ class NetworkTrainer:
                 logs["lr/unet"] = float(lrs[-1])  # may be same to textencoder
 
             if (
-                args.optimizer_type.lower().startswith("DAdapt".lower()) or args.optimizer_type.lower() == "Prodigy".lower()
+                args.optimizer_type.lower().startswith("DAdapt".lower())
+                or args.optimizer_type.lower() == "Prodigy".lower()
             ):  # tracking d*lr value of unet.
                 logs["lr/d*lr"] = (
                     lr_scheduler.optimizers[-1].param_groups[0]["d"] * lr_scheduler.optimizers[-1].param_groups[0]["lr"]
@@ -87,9 +96,13 @@ class NetworkTrainer:
 
             for i in range(idx, len(lrs)):
                 logs[f"lr/group{i}"] = float(lrs[i])
-                if args.optimizer_type.lower().startswith("DAdapt".lower()) or args.optimizer_type.lower() == "Prodigy".lower():
+                if (
+                    args.optimizer_type.lower().startswith("DAdapt".lower())
+                    or args.optimizer_type.lower() == "Prodigy".lower()
+                ):
                     logs[f"lr/d*lr/group{i}"] = (
-                        lr_scheduler.optimizers[-1].param_groups[i]["d"] * lr_scheduler.optimizers[-1].param_groups[i]["lr"]
+                        lr_scheduler.optimizers[-1].param_groups[i]["d"]
+                        * lr_scheduler.optimizers[-1].param_groups[i]["lr"]
                     )
 
         return logs
@@ -116,7 +129,9 @@ class NetworkTrainer:
 
     def get_text_cond(self, args, accelerator, batch, tokenizers, text_encoders, weight_dtype):
         input_ids = batch["input_ids"].to(accelerator.device)
-        encoder_hidden_states = train_util.get_hidden_states(args, input_ids, tokenizers[0], text_encoders[0], weight_dtype)
+        encoder_hidden_states = train_util.get_hidden_states(
+            args, input_ids, tokenizers[0], text_encoders[0], weight_dtype
+        )
         return encoder_hidden_states
 
     def call_unet(self, args, accelerator, unet, noisy_latents, timesteps, text_conds, batch, weight_dtype):
@@ -184,11 +199,41 @@ class NetworkTrainer:
                         ]
                     }
 
+            # user_config = {
+            #    "datasets": [
+            #        {
+            #            "subsets": [{
+            #                "class_tokens": "arizon",
+            #                "image_dir": "/home/hoshino/files/dataset/kohya_ss/train_arizon",
+            #                "is_reg": False,
+            #                "num_repeats": 4,
+            #            }]
+            #        }
+            #    ]
+            # }
+            user_config = {
+                "datasets": [
+                    {
+                        "subsets": config_util.generate_dreambooth_subsets_config_by_subdirs(
+                            "/home/hoshino/files/dataset/kohya_ss/train_arizon", args.reg_data_dir
+                        )
+                    }
+                ]
+            }
+
             blueprint = blueprint_generator.generate(user_config, args, tokenizer=tokenizer)
             train_dataset_group = config_util.generate_dataset_group_by_blueprint(blueprint.dataset_group)
+
+            print("===")
+            pprint(dict(user_config))
+            pprint(vars(train_dataset_group))
+            print(train_dataset_group.image_data)
+            print("===")
         else:
             # use arbitrary dataset class
             train_dataset_group = train_util.load_arbitrary_dataset(args, tokenizer)
+
+        sys.exit(0)
 
         current_epoch = Value("i", 0)
         current_step = Value("i", 0)
@@ -249,7 +294,9 @@ class NetworkTrainer:
                 module, weights_sd = network_module.create_network_from_weights(
                     multiplier, weight_path, vae, text_encoder, unet, for_inference=True
                 )
-                module.merge_to(text_encoder, unet, weights_sd, weight_dtype, accelerator.device if args.lowram else "cpu")
+                module.merge_to(
+                    text_encoder, unet, weights_sd, weight_dtype, accelerator.device if args.lowram else "cpu"
+                )
 
             accelerator.print(f"all weights merged: {', '.join(args.base_weights)}")
 
@@ -259,7 +306,9 @@ class NetworkTrainer:
             vae.requires_grad_(False)
             vae.eval()
             with torch.no_grad():
-                train_dataset_group.cache_latents(vae, args.vae_batch_size, args.cache_latents_to_disk, accelerator.is_main_process)
+                train_dataset_group.cache_latents(
+                    vae, args.vae_batch_size, args.cache_latents_to_disk, accelerator.is_main_process
+                )
             vae.to("cpu")
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -281,7 +330,9 @@ class NetworkTrainer:
 
         # if a new network is added in future, add if ~ then blocks for each network (;'∀')
         if args.dim_from_weights:
-            network, _ = network_module.create_network_from_weights(1, args.network_weights, vae, text_encoder, unet, **net_kwargs)
+            network, _ = network_module.create_network_from_weights(
+                1, args.network_weights, vae, text_encoder, unet, **net_kwargs
+            )
         else:
             if "dropout" not in net_kwargs:
                 # workaround for LyCORIS (;^ω^)
@@ -415,7 +466,9 @@ class NetworkTrainer:
                 )
                 text_encoders = [text_encoder]
 
-            unet.to(accelerator.device, dtype=weight_dtype)  # move to device because unet is not prepared by accelerator
+            unet.to(
+                accelerator.device, dtype=weight_dtype
+            )  # move to device because unet is not prepared by accelerator
         else:
             network, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
                 network, optimizer, train_dataloader, lr_scheduler
@@ -627,7 +680,10 @@ class NetworkTrainer:
             if use_dreambooth_method:
                 for subset in dataset.subsets:
                     info = reg_dataset_dirs_info if subset.is_reg else dataset_dirs_info
-                    info[os.path.basename(subset.image_dir)] = {"n_repeats": subset.num_repeats, "img_count": subset.img_count}
+                    info[os.path.basename(subset.image_dir)] = {
+                        "n_repeats": subset.num_repeats,
+                        "img_count": subset.img_count,
+                    }
             else:
                 for subset in dataset.subsets:
                     dataset_dirs_info[os.path.basename(subset.metadata_file)] = {
@@ -685,11 +741,17 @@ class NetworkTrainer:
             if key in metadata:
                 minimum_metadata[key] = metadata[key]
 
-        progress_bar = tqdm(range(args.max_train_steps), smoothing=0, disable=not accelerator.is_local_main_process, desc="steps")
+        progress_bar = tqdm(
+            range(args.max_train_steps), smoothing=0, disable=not accelerator.is_local_main_process, desc="steps"
+        )
         global_step = 0
 
         noise_scheduler = DDPMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, clip_sample=False
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
         )
         prepare_scheduler_for_custom_training(noise_scheduler, accelerator.device)
         if args.zero_terminal_snr:
@@ -836,7 +898,9 @@ class NetworkTrainer:
                     progress_bar.update(1)
                     global_step += 1
 
-                    self.sample_images(accelerator, args, None, global_step, accelerator.device, vae, tokenizer, text_encoder, unet)
+                    self.sample_images(
+                        accelerator, args, None, global_step, accelerator.device, vae, tokenizer, text_encoder, unet
+                    )
 
                     # 指定ステップごとにモデルを保存
                     if args.save_every_n_steps is not None and global_step % args.save_every_n_steps == 0:
@@ -850,7 +914,9 @@ class NetworkTrainer:
 
                             remove_step_no = train_util.get_remove_step_no(args, global_step)
                             if remove_step_no is not None:
-                                remove_ckpt_name = train_util.get_step_ckpt_name(args, "." + args.save_model_as, remove_step_no)
+                                remove_ckpt_name = train_util.get_step_ckpt_name(
+                                    args, "." + args.save_model_as, remove_step_no
+                                )
                                 remove_model(remove_ckpt_name)
 
                 current_loss = loss.detach().item()
@@ -868,7 +934,9 @@ class NetworkTrainer:
                     progress_bar.set_postfix(**{**max_mean_logs, **logs})
 
                 if args.logging_dir is not None:
-                    logs = self.generate_step_logs(args, current_loss, avr_loss, lr_scheduler, keys_scaled, mean_norm, maximum_norm)
+                    logs = self.generate_step_logs(
+                        args, current_loss, avr_loss, lr_scheduler, keys_scaled, mean_norm, maximum_norm
+                    )
                     accelerator.log(logs, step=global_step)
 
                 if global_step >= args.max_train_steps:
@@ -889,13 +957,17 @@ class NetworkTrainer:
 
                     remove_epoch_no = train_util.get_remove_epoch_no(args, epoch + 1)
                     if remove_epoch_no is not None:
-                        remove_ckpt_name = train_util.get_epoch_ckpt_name(args, "." + args.save_model_as, remove_epoch_no)
+                        remove_ckpt_name = train_util.get_epoch_ckpt_name(
+                            args, "." + args.save_model_as, remove_epoch_no
+                        )
                         remove_model(remove_ckpt_name)
 
                     if args.save_state:
                         train_util.save_and_remove_state_on_epoch_end(args, accelerator, epoch + 1)
 
-            self.sample_images(accelerator, args, epoch + 1, global_step, accelerator.device, vae, tokenizer, text_encoder, unet)
+            self.sample_images(
+                accelerator, args, epoch + 1, global_step, accelerator.device, vae, tokenizer, text_encoder, unet
+            )
 
             # end of epoch
 
@@ -927,7 +999,9 @@ def setup_parser() -> argparse.ArgumentParser:
     config_util.add_config_arguments(parser)
     custom_train_functions.add_custom_train_arguments(parser)
 
-    parser.add_argument("--no_metadata", action="store_true", help="do not save metadata in output model / メタデータを出力先モデルに保存しない")
+    parser.add_argument(
+        "--no_metadata", action="store_true", help="do not save metadata in output model / メタデータを出力先モデルに保存しない"
+    )
     parser.add_argument(
         "--save_model_as",
         type=str,
@@ -937,12 +1011,19 @@ def setup_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--unet_lr", type=float, default=None, help="learning rate for U-Net / U-Netの学習率")
-    parser.add_argument("--text_encoder_lr", type=float, default=None, help="learning rate for Text Encoder / Text Encoderの学習率")
+    parser.add_argument(
+        "--text_encoder_lr", type=float, default=None, help="learning rate for Text Encoder / Text Encoderの学習率"
+    )
 
-    parser.add_argument("--network_weights", type=str, default=None, help="pretrained weights for network / 学習するネットワークの初期重み")
+    parser.add_argument(
+        "--network_weights", type=str, default=None, help="pretrained weights for network / 学習するネットワークの初期重み"
+    )
     parser.add_argument("--network_module", type=str, default=None, help="network module to train / 学習対象のネットワークのモジュール")
     parser.add_argument(
-        "--network_dim", type=int, default=None, help="network dimensions (depends on each network) / モジュールの次元数（ネットワークにより定義は異なります）"
+        "--network_dim",
+        type=int,
+        default=None,
+        help="network dimensions (depends on each network) / モジュールの次元数（ネットワークにより定義は異なります）",
     )
     parser.add_argument(
         "--network_alpha",
@@ -957,14 +1038,25 @@ def setup_parser() -> argparse.ArgumentParser:
         help="Drops neurons out of training every step (0 or None is default behavior (no dropout), 1 would drop all neurons) / 訓練時に毎ステップでニューロンをdropする（0またはNoneはdropoutなし、1は全ニューロンをdropout）",
     )
     parser.add_argument(
-        "--network_args", type=str, default=None, nargs="*", help="additional arguments for network (key=value) / ネットワークへの追加の引数"
+        "--network_args",
+        type=str,
+        default=None,
+        nargs="*",
+        help="additional arguments for network (key=value) / ネットワークへの追加の引数",
     )
-    parser.add_argument("--network_train_unet_only", action="store_true", help="only training U-Net part / U-Net関連部分のみ学習する")
     parser.add_argument(
-        "--network_train_text_encoder_only", action="store_true", help="only training Text Encoder part / Text Encoder関連部分のみ学習する"
+        "--network_train_unet_only", action="store_true", help="only training U-Net part / U-Net関連部分のみ学習する"
     )
     parser.add_argument(
-        "--training_comment", type=str, default=None, help="arbitrary comment string stored in metadata / メタデータに記録する任意のコメント文字列"
+        "--network_train_text_encoder_only",
+        action="store_true",
+        help="only training Text Encoder part / Text Encoder関連部分のみ学習する",
+    )
+    parser.add_argument(
+        "--training_comment",
+        type=str,
+        default=None,
+        help="arbitrary comment string stored in metadata / メタデータに記録する任意のコメント文字列",
     )
     parser.add_argument(
         "--dim_from_weights",
