@@ -287,6 +287,10 @@ class NetworkTrainer:
 
             accelerator.wait_for_everyone()
 
+        if args.gpu_device_id is not None:
+            accelerator.state.device = torch.device("cuda", args.gpu_device_id)
+            torch.cuda.set_device(accelerator.state.device)
+
         # 必要ならテキストエンコーダーの出力をキャッシュする: Text Encoderはcpuまたはgpuへ移される
         self.cache_text_encoder_outputs_if_needed(
             args, accelerator, unet, vae, tokenizers, text_encoders, train_dataset_group, weight_dtype
@@ -868,6 +872,8 @@ class NetworkTrainer:
                 if accelerator.sync_gradients:
                     progress_bar.update(1)
                     global_step += 1
+                    if args.progress_callback:
+                        args.progress_callback(global_step, 1)
 
                     self.sample_images(
                         accelerator, args, None, global_step, accelerator.device, vae, tokenizer, text_encoder, unet
