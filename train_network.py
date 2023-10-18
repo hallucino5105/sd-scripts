@@ -199,41 +199,12 @@ class NetworkTrainer:
                         ]
                     }
 
-            # user_config = {
-            #    "datasets": [
-            #        {
-            #            "subsets": [{
-            #                "class_tokens": "arizon",
-            #                "image_dir": "/home/hoshino/files/dataset/kohya_ss/train_arizon",
-            #                "is_reg": False,
-            #                "num_repeats": 4,
-            #            }]
-            #        }
-            #    ]
-            # }
-            user_config = {
-                "datasets": [
-                    {
-                        "subsets": config_util.generate_dreambooth_subsets_config_by_subdirs(
-                            "/home/hoshino/files/dataset/kohya_ss/train_arizon", args.reg_data_dir
-                        )
-                    }
-                ]
-            }
-
             blueprint = blueprint_generator.generate(user_config, args, tokenizer=tokenizer)
             train_dataset_group = config_util.generate_dataset_group_by_blueprint(blueprint.dataset_group)
 
-            print("===")
-            pprint(dict(user_config))
-            pprint(vars(train_dataset_group))
-            print(train_dataset_group.image_data)
-            print("===")
         else:
             # use arbitrary dataset class
             train_dataset_group = train_util.load_arbitrary_dataset(args, tokenizer)
-
-        sys.exit(0)
 
         current_epoch = Value("i", 0)
         current_step = Value("i", 0)
