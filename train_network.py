@@ -873,7 +873,7 @@ class NetworkTrainer:
                     progress_bar.update(1)
                     global_step += 1
                     if args.progress_callback:
-                        args.progress_callback(global_step, 1)
+                        args.progress_callback(global_step, args.max_train_steps)
 
                     self.sample_images(
                         accelerator, args, None, global_step, accelerator.device, vae, tokenizer, text_encoder, unet
