@@ -774,8 +774,8 @@ class NetworkTrainer:
                 accelerator.print(f"removing old checkpoint: {old_ckpt_file}")
                 os.remove(old_ckpt_file)
 
-        print(vars(accelerator))
-        return
+        #print(vars(accelerator))
+        #return
 
         # training loop
         for epoch in range(num_train_epochs):
