@@ -141,7 +141,7 @@ class NetworkTrainer:
     def sample_images(self, accelerator, args, epoch, global_step, device, vae, tokenizer, text_encoder, unet):
         train_util.sample_images(accelerator, args, epoch, global_step, device, vae, tokenizer, text_encoder, unet)
 
-    def train(self, args):
+    def train(self, args, gpu_device_id=None, progress_callback=None):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
         train_util.verify_training_args(args)
@@ -287,8 +287,8 @@ class NetworkTrainer:
 
             accelerator.wait_for_everyone()
 
-        if args.gpu_device_id is not None:
-            accelerator.state.device = torch.device("cuda", args.gpu_device_id)
+        if gpu_device_id is not None:
+            accelerator.state.device = torch.device("cuda", gpu_device_id)
             torch.cuda.set_device(accelerator.state.device)
 
         # 必要ならテキストエンコーダーの出力をキャッシュする: Text Encoderはcpuまたはgpuへ移される
@@ -872,8 +872,8 @@ class NetworkTrainer:
                 if accelerator.sync_gradients:
                     progress_bar.update(1)
                     global_step += 1
-                    if args.progress_callback:
-                        args.progress_callback(global_step, args.max_train_steps)
+                    if progress_callback:
+                        progress_callback(global_step, args.max_train_steps)
 
                     self.sample_images(
                         accelerator, args, None, global_step, accelerator.device, vae, tokenizer, text_encoder, unet
